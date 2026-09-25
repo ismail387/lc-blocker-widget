@@ -3,7 +3,7 @@
   'use strict';
 
   const CFG = window.LCB_CONFIG || {};
-  const TOKEN_KEY = 'lcb_token_v1';
+  const TOKEN_KEY = 'lcb_token_v2'; // bump when widget app scopes change
   const REDIRECT_KEY = 'lcb_redirect_at';
   const CONNECT_TIMEOUT_MS = CFG.connectTimeoutMs || 8000;
 
