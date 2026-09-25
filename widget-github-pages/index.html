@@ -120,6 +120,65 @@
   .empty { font-size: 13px; color: var(--muted); }
   .foot { margin-top: 20px; font-size: 12px; color: var(--muted); }
 
+  .tabs {
+    display: flex;
+    gap: 16px;
+    margin: -4px 0 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tab {
+    padding: 8px 0;
+    margin-bottom: -1px;
+    background: transparent;
+    color: var(--muted);
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    font-weight: 600;
+  }
+  .tab.is-active { color: var(--ink); border-bottom-color: var(--ink); }
+
+  .btn-link {
+    padding: 6px 0;
+    background: transparent;
+    color: var(--focus);
+    border: 0;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  #attempts-toggle { margin-top: 4px; }
+
+  .list-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .list-count { font-weight: 600; }
+  input[type="search"] {
+    box-sizing: border-box;
+    width: 100%;
+    margin-top: 12px;
+    padding: 8px 10px;
+    font: inherit;
+    color: inherit;
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+  .rows { list-style: none; margin: 12px 0 0; padding: 0; }
+  .rows li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px 12px;
+    padding: 10px 0 10px 10px;
+    border-top: 1px solid var(--line);
+    border-left: 3px solid var(--block);
+  }
+  .row-main { flex: 1 1 160px; min-width: 0; }
+  .row-id { font-weight: 600; font-variant-numeric: tabular-nums; word-break: break-all; }
+  .row-meta { margin-top: 2px; font-size: 12px; color: var(--muted); }
+  .row-note { margin-top: 2px; font-size: 13px; font-style: italic; }
+  .row-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+  .row-actions button { padding: 6px 10px; font-size: 13px; }
+
   @media (prefers-reduced-motion: no-preference) {
     .notice { animation: notice-in .18s ease-out; }
     @keyframes notice-in { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
