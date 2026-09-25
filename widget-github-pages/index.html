@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>party_id Blocker</title>
+<style>
+  :root {
+    --ink: #1d232b;
+    --muted: #5f6b78;
+    --line: #e4e7eb;
+    --paper: #ffffff;
+    --field: #f6f7f9;
+    --block: #b3261e;
+    --block-ink: #ffffff;
+    --block-tint: #fbeceb;
+    --clear: #45556a;
+    --clear-tint: #eef1f5;
+    --focus: #2f6fed;
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    --ink: #e6e9ed;
+    --muted: #9aa4b0;
+    --line: #2e353d;
+    --paper: #1f242a;
+    --field: #262c33;
+    --block: #ff7b72;
+    --block-ink: #1f242a;
+    --block-tint: #3b2224;
+    --clear: #a9b6c6;
+    --clear-tint: #262d35;
+    --focus: #7aa2ff;
+    color-scheme: dark;
+  }
+  html, body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  main { padding: 16px; max-width: 480px; }
+  p { margin: 0; }
+
+  .plate {
+    border-left: 4px solid var(--clear);
+    background: var(--clear-tint);
+    border-radius: 0 6px 6px 0;
+    padding: 12px 14px;
+  }
+  .plate.is-blocked { border-left-color: var(--block); background: var(--block-tint); }
+  .plate-state { font-size: 13px; font-weight: 600; color: var(--clear); }
+  .is-blocked .plate-state { color: var(--block); }
+  .plate-id {
+    margin-top: 2px;
+    font-size: 22px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    word-break: break-all;
+  }
+  .plate-meta, .plate-note { margin-top: 4px; font-size: 13px; color: var(--muted); }
+  .plate-note { font-style: italic; }
+
+  .notice {
+    margin-top: 12px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--field);
+    font-size: 13px;
+  }
+
+  .form { margin-top: 16px; }
+  label { display: block; margin-bottom: 6px; font-size: 13px; color: var(--muted); }
+  textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 64px;
+    resize: vertical;
+    padding: 8px 10px;
+    font: inherit;
+    color: inherit;
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+  .confirm-q { width: 100%; font-size: 13px; }
+  button {
+    padding: 8px 14px;
+    font: inherit;
+    font-weight: 600;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .btn-danger { background: var(--block); color: var(--block-ink); }
+  .btn-outline { background: transparent; color: var(--ink); border-color: var(--line); }
+  .btn-text { background: transparent; color: var(--muted); padding: 8px 6px; }
+  button:disabled { opacity: .6; cursor: default; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .hint { margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .error { margin-top: 8px; font-size: 13px; color: var(--block); }
+  .state-msg { color: var(--muted); }
+  .state-msg + .actions { margin-top: 12px; }
+  .selectable { user-select: all; font-variant-numeric: tabular-nums; }
+
+  h2 { margin: 20px 0 6px; font-size: 13px; font-weight: 600; }
+  .list { list-style: none; margin: 0; padding: 0; }
+  .list li {
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    gap: 8px;
+    padding: 6px 0;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+  }
+  .when { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .sub { display: block; color: var(--muted); }
+  .empty { font-size: 13px; color: var(--muted); }
+  .foot { margin-top: 20px; font-size: 12px; color: var(--muted); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .notice { animation: notice-in .18s ease-out; }
+    @keyframes notice-in { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+  }
+</style>
+</head>
+<body>
+<main id="app" aria-live="polite"><p class="state-msg">Yükleniyor…</p></main>
+<script src="vendor/agentapp.umd.min.js"></script>
+<script src="vendor/accounts-sdk.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
