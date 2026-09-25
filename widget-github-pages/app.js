@@ -3,7 +3,7 @@
   'use strict';
 
   const CFG = window.LCB_CONFIG || {};
-  const TOKEN_KEY = 'lcb_token_v2'; // bump when widget app scopes change
+  const TOKEN_KEY = 'lcb_token_v3'; // bump when widget app scopes change
   const REDIRECT_KEY = 'lcb_redirect_at';
   const CONNECT_TIMEOUT_MS = CFG.connectTimeoutMs || 8000;
 
@@ -18,8 +18,12 @@
     confirming: null, // 'block' | 'unblock'
     busy: false,
     noteDraft: '',
-    seq: 0
+    seq: 0,
+    view: 'chat', // chat | list
+    showAllAttempts: false,
+    list: { items: null, loading: false, error: null, filter: '', confirming: null, busyId: null, notice: null, seq: 0 }
   };
+  const ATTEMPTS_PREVIEW = 3;
 
   // ---------- small helpers ----------
 
@@ -215,10 +219,59 @@
       state.data = data;
       state.confirming = null;
       state.noteDraft = '';
+      state.list.items = null; // list is stale now
     } catch (e) {
       state.actionError = e.message;
     }
     state.busy = false;
+    render();
+  }
+
+  // ---------- blocked list ----------
+
+  async function loadList() {
+    const L = state.list;
+    const seq = ++L.seq;
+    L.loading = true;
+    L.error = null;
+    render();
+    try {
+      const res = await callWithReauth('list', { chat_id: null, customer_id: null });
+      if (seq !== L.seq) return;
+      L.items = res.entries || [];
+      if (res.agent) state.agentEmail = res.agent.email;
+    } catch (e) {
+      if (seq !== L.seq) return;
+      L.error = e;
+    }
+    L.loading = false;
+    render();
+  }
+
+  async function unblockFromList(partyId) {
+    const L = state.list;
+    if (L.busyId) return;
+    L.busyId = partyId;
+    L.notice = null;
+    render();
+    try {
+      await callWithReauth('unblock', { chat_id: null, customer_id: null, party_id: partyId, note: 'Engelli üyeler listesinden çıkarıldı' });
+      L.items = (L.items || []).filter(function (x) { return x.party_id !== partyId; });
+      L.notice = { ok: true, text: partyId + ' listeden çıkarıldı. Mevcut ban sürüyor; kaldırmak için banı LiveChat ayarlarından kaldır.' };
+      if (state.data && state.data.party_id === partyId) state.data = null; // chat view reloads on return
+    } catch (e) {
+      L.notice = { ok: false, text: e.message };
+    }
+    L.confirming = null;
+    L.busyId = null;
+    render();
+  }
+
+  function switchView(view) {
+    if (state.view === view) return;
+    state.view = view;
+    if (view === 'list' && !state.list.items && !state.list.loading) { loadList(); return; }
+    if (view === 'chat' && state.profile && !state.data && state.token) { loadStatus(); return; }
     render();
   }
 
@@ -244,7 +297,9 @@
     state.confirming = null;
     state.actionError = null;
     state.noteDraft = '';
-    loadStatus();
+    state.showAllAttempts = false;
+    if (state.view === 'chat') loadStatus();
+    else render();
   }
 
   function afterAuth() {
@@ -363,18 +418,29 @@
     );
   }
 
-  function viewAttempts(list) {
+  function viewAttempts(all) {
+    const list = all || [];
+    const shown = state.showAllAttempts ? list : list.slice(0, ATTEMPTS_PREVIEW);
+    const toggle = list.length > ATTEMPTS_PREVIEW
+      ? h('button', {
+        id: 'attempts-toggle',
+        class: 'btn-link',
+        'aria-expanded': state.showAllAttempts ? 'true' : 'false',
+        onclick: function () { state.showAllAttempts = !state.showAllAttempts; render(); }
+      }, state.showAllAttempts ? 'Daha az göster' : 'Tümünü göster (' + list.length + ')')
+      : null;
     return [
-      h('h2', { text: 'Engellenen denemeler' }),
-      list && list.length
-        ? h.apply(null, ['ul', { class: 'list' }].concat(list.map(function (a) {
+      h('h2', { text: list.length ? 'Engellenen denemeler (' + list.length + ')' : 'Engellenen denemeler' }),
+      shown.length
+        ? h.apply(null, ['ul', { class: 'list', id: 'attempts' }].concat(shown.map(function (a) {
           const thread = String(a.chat || '').split('/').pop();
           return h('li', null,
             h('span', { class: 'when', text: formatDate(a.time) }),
             h('span', null, ATTEMPT_LABEL[a.status] || a.status, thread ? h('span', { class: 'sub', text: 'Chat ' + thread }) : null)
           );
         })))
-        : h('p', { class: 'empty', text: 'Henüz engellenen deneme yok.' })
+        : h('p', { class: 'empty', text: 'Henüz engellenen deneme yok.' }),
+      toggle
     ];
   }
 
@@ -406,12 +472,117 @@
       out.push.apply(out, viewAttempts(d.attempts));
       out.push.apply(out, viewHistory(d.history));
     }
-    if (d.agent && d.agent.email) out.push(h('p', { class: 'foot', text: d.agent.email + ' olarak işlem yapıyorsun.' }));
+    if (d.agent && d.agent.email) state.agentEmail = d.agent.email;
     return out;
+  }
+
+  function viewList() {
+    const L = state.list;
+    if (L.loading && !L.items) return message('Liste yükleniyor…');
+    if (L.error && !L.items) {
+      return [
+        h('p', { class: 'error', role: 'alert', text: L.error.message || 'Liste alınamadı.' }),
+        h('div', { class: 'actions' }, h('button', { id: 'list-retry', class: 'btn-outline', onclick: loadList }, 'Tekrar dene'))
+      ];
+    }
+    const items = L.items || [];
+    const q = L.filter.trim().toLowerCase();
+    const shown = q ? items.filter(function (x) {
+      return x.party_id.toLowerCase().indexOf(q) !== -1 || String(x.note || '').toLowerCase().indexOf(q) !== -1;
+    }) : items;
+
+    const out = [
+      h('div', { class: 'list-head' },
+        h('p', { class: 'list-count', text: items.length ? items.length + ' engelli üye' : 'Listede engelli üye yok.' }),
+        h('button', { id: 'list-refresh', class: 'btn-link', disabled: L.loading, onclick: loadList }, L.loading ? 'Yenileniyor…' : 'Yenile')
+      )
+    ];
+    if (L.notice) out.push(h('p', { class: L.notice.ok ? 'notice' : 'error', role: L.notice.ok ? 'status' : 'alert', text: L.notice.text }));
+    if (!items.length) return out;
+
+    const search = h('input', {
+      id: 'list-filter',
+      type: 'search',
+      placeholder: 'party_id veya not ara',
+      'aria-label': 'Listede ara',
+      oninput: function (ev) {
+        L.filter = ev.target.value;
+        render();
+        const el = document.getElementById('list-filter');
+        if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+      }
+    });
+    search.value = L.filter;
+    out.push(search);
+
+    if (!shown.length) {
+      out.push(h('p', { class: 'empty', text: 'Aramayla eşleşen üye yok.' }));
+      return out;
+    }
+
+    out.push(h.apply(null, ['ul', { class: 'rows', id: 'blocked-list' }].concat(shown.map(function (x) {
+      const confirming = L.confirming === x.party_id;
+      const busy = L.busyId === x.party_id;
+      const by = x.updated_by ? who(x.updated_by) + ' engelledi, ' + formatDate(x.updated_at || x.added_at) : 'Eklenme: ' + formatDate(x.added_at);
+      const attempt = x.attempt_count
+        ? 'Son deneme ' + formatDate(x.last_attempt) + ', toplam ' + x.attempt_count
+        : 'Henüz deneme yok';
+      const actions = confirming
+        ? h('div', { class: 'row-actions' },
+          h('button', { class: 'btn-outline row-confirm', 'data-party': x.party_id, disabled: busy, onclick: function () { unblockFromList(x.party_id); } }, busy ? 'Çıkarılıyor…' : 'Evet, çıkar'),
+          h('button', { class: 'btn-text row-cancel', disabled: busy, onclick: function () { L.confirming = null; render(); } }, 'Vazgeç'))
+        : h('div', { class: 'row-actions' },
+          h('button', { class: 'btn-outline row-unblock', 'data-party': x.party_id, 'aria-label': x.party_id + ' listeden çıkar', onclick: function () { L.confirming = x.party_id; L.notice = null; render(); } }, 'Listeden çıkar'));
+      return h('li', { 'data-party': x.party_id },
+        h('div', { class: 'row-main' },
+          h('p', { class: 'row-id', text: x.party_id }),
+          h('p', { class: 'row-meta', text: by }),
+          x.note ? h('p', { class: 'row-note', text: x.note }) : null,
+          h('p', { class: 'row-meta', text: attempt })
+        ),
+        actions
+      );
+    }))));
+    return out;
+  }
+
+  function viewTabs() {
+    const tab = function (id, label) {
+      const active = state.view === id;
+      return h('button', {
+        id: 'tab-' + id,
+        class: 'tab' + (active ? ' is-active' : ''),
+        role: 'tab',
+        'aria-selected': active ? 'true' : 'false',
+        onclick: function () { switchView(id); }
+      }, label);
+    };
+    return h('div', { class: 'tabs', role: 'tablist' }, tab('chat', 'Bu üye'), tab('list', 'Engelli üyeler'));
   }
 
   function retryButton() {
     return h('div', { class: 'actions' }, h('button', { id: 'retry', class: 'btn-outline', onclick: function () { loadStatus(); } }, 'Tekrar dene'));
+  }
+
+  function viewChat() {
+    switch (state.phase) {
+      case 'nochat':
+        return message('Bir chat açtığında üyenin engel durumu burada görünür.');
+      case 'loading':
+        return message('Yükleniyor…');
+      case 'error': {
+        const e = state.error || {};
+        const isSetup = e.code === 'setup_required';
+        return [
+          h('p', { class: isSetup ? 'state-msg selectable' : 'error', role: 'alert', text: e.message || 'Beklenmeyen bir hata oluştu.' }),
+          isSetup ? null : retryButton()
+        ];
+      }
+      case 'ready':
+        return viewReady(state.data || {});
+      default:
+        return message('Yükleniyor…');
+    }
   }
 
   function render() {
@@ -425,6 +596,9 @@
       case 'outside':
         nodes = message('Bu sayfa LiveChat içinde, chat detayları panelinde açılmalı.');
         break;
+      case 'boot':
+        nodes = message('Yükleniyor…');
+        break;
       case 'auth':
         nodes = message('LiveChat hesabınla doğrulanıyor…');
         break;
@@ -435,28 +609,14 @@
           nodes.push(h('p', { class: 'error', role: 'alert', text: state.error.message }));
         }
         break;
-      case 'nochat':
-        nodes = message('Bir chat açtığında üyenin engel durumu burada görünür.');
-        break;
-      case 'loading':
-        nodes = message('Yükleniyor…');
-        break;
-      case 'error': {
-        const e = state.error || {};
-        const isSetup = e.code === 'setup_required';
-        nodes = [
-          h('p', { class: isSetup ? 'state-msg selectable' : 'error', role: 'alert', text: e.message || 'Beklenmeyen bir hata oluştu.' }),
-          isSetup ? null : retryButton()
-        ];
-        break;
+      default: {
+        const setupError = state.phase === 'error' && state.error && state.error.code === 'setup_required';
+        const body = state.view === 'list' && !setupError ? viewList() : viewChat();
+        nodes = [setupError ? null : viewTabs(), h.apply(null, ['div', { class: 'view', role: 'tabpanel' }].concat(body.filter(Boolean)))];
+        if (state.agentEmail) nodes.push(h('p', { class: 'foot', text: state.agentEmail + ' olarak işlem yapıyorsun.' }));
       }
-      case 'ready':
-        nodes = viewReady(state.data || {});
-        break;
-      default:
-        nodes = message('Yükleniyor…');
     }
-    root.setAttribute('aria-busy', state.phase === 'loading' || state.busy ? 'true' : 'false');
+    root.setAttribute('aria-busy', state.phase === 'loading' || state.busy || state.list.loading ? 'true' : 'false');
     root.replaceChildren.apply(root, nodes.filter(Boolean));
   }
 
