@@ -24,6 +24,26 @@
     list: { items: null, loading: false, error: null, filter: '', confirming: null, busyId: null, notice: null, seq: 0 }
   };
   const ATTEMPTS_PREVIEW = 3;
+  const BAN_PRESETS = [1, 7, 30, 180];
+  const BAN_MIN = 1;
+  const BAN_MAX = 365;
+  state.banDraft = null; // null = use the default from the API
+
+  function banValue(d) {
+    const raw = state.banDraft === null ? String((d && d.default_ban_days) || 180) : state.banDraft;
+    const n = Number(raw);
+    return { raw: raw, n: n, valid: /^\d+$/.test(String(raw).trim()) && n >= BAN_MIN && n <= BAN_MAX };
+  }
+
+  function endDateText(days) {
+    return formatDate(new Date(Date.now() + days * 86400000).toISOString());
+  }
+
+  function untilText(e) {
+    if (!e) return '';
+    if (e.blocked_until) return 'Bitiş: ' + formatDate(e.blocked_until) + (e.ban_days ? ' (' + e.ban_days + ' günlük engel)' : '');
+    return 'Bitiş tarihi yok';
+  }
 
   // ---------- small helpers ----------
 
@@ -215,10 +235,13 @@
     state.actionError = null;
     render();
     try {
-      const data = await callWithReauth(kind, { note: state.noteDraft });
+      const extra = { note: state.noteDraft };
+      if (kind === 'block') extra.ban_days = banValue(state.data).n;
+      const data = await callWithReauth(kind, extra);
       state.data = data;
       state.confirming = null;
       state.noteDraft = '';
+      state.banDraft = null;
       state.list.items = null; // list is stale now
     } catch (e) {
       state.actionError = e.message;
@@ -297,6 +320,7 @@
     state.confirming = null;
     state.actionError = null;
     state.noteDraft = '';
+    state.banDraft = null;
     state.showAllAttempts = false;
     if (state.view === 'chat') loadStatus();
     else render();
@@ -352,7 +376,9 @@
     const e = d.entry;
     const blocked = d.blocked;
     let meta;
-    if (e && e.updated_by) {
+    if (e && e.expired && e.active) {
+      meta = 'Engel süresi doldu, ' + formatDate(e.blocked_until);
+    } else if (e && e.updated_by) {
       meta = who(e.updated_by) + (blocked ? ' engelledi, ' : ' listeden çıkardı, ') + formatDate(e.updated_at || e.added_at);
     } else if (e) {
       meta = blocked ? 'Listede, eklenme: ' + formatDate(e.added_at) : 'Listede pasif';
@@ -363,6 +389,7 @@
       h('p', { class: 'plate-state', text: blocked ? 'Engelli' : 'Engelli değil' }),
       h('p', { class: 'plate-id', text: d.party_id }),
       h('p', { class: 'plate-meta', text: meta }),
+      blocked ? h('p', { class: 'plate-meta plate-until', text: untilText(e) }) : null,
       blocked && e && e.note ? h('p', { class: 'plate-note', text: e.note }) : null
     );
   }
@@ -378,11 +405,51 @@
     });
     note.value = state.noteDraft;
 
+    const ban = banValue(d);
+    let duration = null;
+    if (kind === 'block') {
+      const days = h('input', {
+        id: 'ban-days',
+        type: 'number',
+        min: String(BAN_MIN),
+        max: String(BAN_MAX),
+        step: '1',
+        inputmode: 'numeric',
+        'aria-describedby': 'ban-hint',
+        'aria-invalid': ban.valid ? 'false' : 'true',
+        disabled: state.busy,
+        oninput: function (ev) {
+          state.banDraft = ev.target.value;
+          state.confirming = null;
+          render();
+          const el = document.getElementById('ban-days');
+          if (el) el.focus();
+        }
+      });
+      days.value = ban.raw;
+      duration = h('div', { class: 'duration' },
+        h('label', { for: 'ban-days', text: 'Ban süresi' }),
+        h.apply(null, ['div', { class: 'chips', role: 'group', 'aria-label': 'Hazır süreler' }].concat(BAN_PRESETS.map(function (n) {
+          return h('button', {
+            class: 'chip',
+            'data-days': String(n),
+            'aria-pressed': ban.valid && ban.n === n ? 'true' : 'false',
+            disabled: state.busy,
+            onclick: function () { state.banDraft = String(n); state.confirming = null; render(); }
+          }, n + ' gün');
+        }))),
+        h('div', { class: 'days-field' }, days, h('span', { class: 'days-suffix', text: 'gün' })),
+        ban.valid
+          ? h('p', { id: 'ban-hint', class: 'hint', text: 'Engel ' + ban.n + ' gün sonra, ' + endDateText(ban.n) + ' tarihinde kendiliğinden biter. Bu sürede üye her yeni denemede otomatik banlanır.' })
+          : h('p', { id: 'ban-hint', class: 'error', role: 'alert', text: BAN_MIN + ' ile ' + BAN_MAX + ' arasında bir gün sayısı gir.' })
+      );
+    }
+
     let actions;
     if (state.confirming === kind) {
       actions = h('div', { class: 'actions' },
         h('p', { class: 'confirm-q', text: kind === 'block'
-          ? d.party_id + ' engellensin mi?'
+          ? d.party_id + ', ' + ban.n + ' gün boyunca engellensin mi?'
           : d.party_id + ' listeden çıkarılsın mı?' }),
         h('button', {
           id: 'confirm',
@@ -402,19 +469,21 @@
         h('button', {
           id: 'primary',
           class: kind === 'block' ? 'btn-danger' : 'btn-outline',
+          disabled: kind === 'block' && !ban.valid,
           onclick: function () { state.confirming = kind; render(); var c = document.getElementById('confirm'); if (c) c.focus(); }
         }, kind === 'block' ? 'Engelle' : 'Listeden çıkar')
       );
     }
 
     return h('div', { class: 'form' },
+      duration,
       h('label', { for: 'note', text: kind === 'block' ? 'Engelleme nedeni (isteğe bağlı)' : 'Çıkarma notu (isteğe bağlı)' }),
       note,
       actions,
       state.actionError ? h('p', { class: 'error', role: 'alert', text: state.actionError }) : null,
-      h('p', { class: 'hint', text: kind === 'block'
-        ? 'Üye her yeni chat denemesinde otomatik banlanır.'
-        : 'Listeden çıkarmak mevcut banı kaldırmaz. Banı LiveChat ayarlarından ayrıca kaldır.' })
+      kind === 'unblock'
+        ? h('p', { class: 'hint', text: 'Listeden çıkarmak mevcut banı kaldırmaz. Banı LiveChat ayarlarından ayrıca kaldır.' })
+        : null
     );
   }
 
@@ -449,7 +518,7 @@
     return [
       h('h2', { text: 'Geçmiş' }),
       h.apply(null, ['ul', { class: 'list' }].concat(list.map(function (x) {
-        const verb = x.action === 'BLOCK' ? ' engelledi' : x.action === 'UNBLOCK' ? ' listeden çıkardı' : ' ' + x.action;
+        const verb = x.action === 'BLOCK' ? ' engelledi' + (x.ban_days ? ' (' + x.ban_days + ' gün)' : '') : x.action === 'UNBLOCK' ? ' listeden çıkardı' : ' ' + x.action;
         return h('li', null,
           h('span', { class: 'when', text: formatDate(x.time) }),
           h('span', null, who(x.by) + verb, x.note ? h('span', { class: 'sub', text: x.note }) : null)
@@ -537,6 +606,7 @@
         h('div', { class: 'row-main' },
           h('p', { class: 'row-id', text: x.party_id }),
           h('p', { class: 'row-meta', text: by }),
+          h('p', { class: 'row-meta row-until', text: untilText(x) }),
           x.note ? h('p', { class: 'row-note', text: x.note }) : null,
           h('p', { class: 'row-meta', text: attempt })
         ),
