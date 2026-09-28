@@ -161,6 +161,33 @@
     border: 1px solid var(--line);
     border-radius: 6px;
   }
+  .duration { margin-bottom: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    padding: 5px 10px;
+    font-size: 13px;
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+  }
+  .chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .days-field { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  input[type="number"] {
+    box-sizing: border-box;
+    width: 96px;
+    padding: 7px 10px;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    color: inherit;
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+  input[aria-invalid="true"] { border-color: var(--block); }
+  .days-suffix { color: var(--muted); font-size: 13px; }
+  .plate-until { color: var(--ink); }
+
   .rows { list-style: none; margin: 12px 0 0; padding: 0; }
   .rows li {
     display: flex;
