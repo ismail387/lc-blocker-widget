@@ -2,6 +2,7 @@
 (function () {
   'use strict';
 
+  const VERSION = '4'; // keep in sync with ?v= in index.html
   const CFG = window.LCB_CONFIG || {};
   const TOKEN_KEY = 'lcb_token_v3'; // bump when widget app scopes change
   const REDIRECT_KEY = 'lcb_redirect_at';
@@ -379,9 +380,11 @@
     if (e && e.expired && e.active) {
       meta = 'Engel süresi doldu, ' + formatDate(e.blocked_until);
     } else if (e && e.updated_by) {
-      meta = who(e.updated_by) + (blocked ? ' engelledi, ' : ' listeden çıkardı, ') + formatDate(e.updated_at || e.added_at);
+      const when = formatDate(e.updated_at || e.added_at);
+      meta = who(e.updated_by) + (blocked ? ' engelledi' : ' listeden çıkardı') + (when ? ', ' + when : '');
     } else if (e) {
-      meta = blocked ? 'Listede, eklenme: ' + formatDate(e.added_at) : 'Listede pasif';
+      const added = formatDate(e.added_at);
+      meta = blocked ? (added ? 'Listede, eklenme: ' + added : 'Listede') : 'Listede pasif';
     } else {
       meta = 'Listede değil';
     }
@@ -592,7 +595,10 @@
     out.push(h.apply(null, ['ul', { class: 'rows', id: 'blocked-list' }].concat(shown.map(function (x) {
       const confirming = L.confirming === x.party_id;
       const busy = L.busyId === x.party_id;
-      const by = x.updated_by ? who(x.updated_by) + ' engelledi, ' + formatDate(x.updated_at || x.added_at) : 'Eklenme: ' + formatDate(x.added_at);
+      const when = formatDate(x.updated_at || x.added_at);
+      const by = x.updated_by
+        ? who(x.updated_by) + ' engelledi' + (when ? ', ' + when : '')
+        : (when ? 'Eklenme: ' + when : 'Eklenme tarihi yok');
       const attempt = x.attempt_count
         ? 'Son deneme ' + formatDate(x.last_attempt) + ', toplam ' + x.attempt_count
         : 'Henüz deneme yok';
@@ -683,7 +689,7 @@
         const setupError = state.phase === 'error' && state.error && state.error.code === 'setup_required';
         const body = state.view === 'list' && !setupError ? viewList() : viewChat();
         nodes = [setupError ? null : viewTabs(), h.apply(null, ['div', { class: 'view', role: 'tabpanel' }].concat(body.filter(Boolean)))];
-        if (state.agentEmail) nodes.push(h('p', { class: 'foot', text: state.agentEmail + ' olarak işlem yapıyorsun.' }));
+        nodes.push(h('p', { class: 'foot', text: (state.agentEmail ? state.agentEmail + ' olarak işlem yapıyorsun. ' : '') + 'Sürüm ' + VERSION }));
       }
     }
     root.setAttribute('aria-busy', state.phase === 'loading' || state.busy || state.list.loading ? 'true' : 'false');
